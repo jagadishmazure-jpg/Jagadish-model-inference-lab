@@ -1,0 +1,16 @@
+[project]
+name = "inferlab"
+version = "0.1.0"
+description = "Unified inference lab over open and closed models: routing, fallbacks, cost tracking."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["inferlab"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
