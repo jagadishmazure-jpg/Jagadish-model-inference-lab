@@ -207,3 +207,20 @@ def test_budget_bitten_by_hindi_multiplier(registry):
     tracker_en.log(model="gpt-4o-mini", backend="fake", card=card,
                    completion=_ref_completion(), language="en")
     tracker_en.check_budget(limit, card.blended_ref_cost("en"))  # no raise
+
+
+def test_provider_reported_tokens_are_not_multiplied(registry):
+    # Real usage counts already reflect the tokenizer; only heuristic estimates get the multiplier.
+    card = registry.get("gpt-4o-mini")
+    reported = Completion(text="ok", tokens_in=100, tokens_out=50, ttft_ms=10.0, tpot_ms=5.0,
+                          tokens_estimated=False)
+    tracker = CallTracker()
+    hi = tracker.log(model="gpt-4o-mini", backend="openai", card=card, completion=reported, language="hi")
+    en = tracker.log(model="gpt-4o-mini", backend="openai", card=card, completion=reported, language="en")
+    assert hi.cost_usd == pytest.approx(en.cost_usd)
+
+
+def test_fake_backend_marks_tokens_as_estimated():
+    from inferlab.clients import FakeBackend
+
+    assert FakeBackend().complete("hello", "gpt-4o-mini").tokens_estimated is True

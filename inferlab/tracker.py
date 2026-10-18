@@ -35,8 +35,12 @@ class CallTracker:
 
     def log(self, *, model: str, backend: str, card: RoutingCard,
             completion: Completion, language: str = "en") -> CallRecord:
-        """Log one call. ``language`` selects the card's token multiplier
-        (e.g. "hi" roughly doubles token counts vs English)."""
+        """Log one call.
+
+        ``language`` selects the card's token multiplier, but only when the
+        completion's token counts are heuristic estimates. Counts reported by
+        the provider already reflect the tokenizer, so multiplying them would
+        double-count."""
         record = CallRecord(
             timestamp=time.time(),
             model=model,
@@ -47,7 +51,7 @@ class CallTracker:
             tpot_ms=completion.tpot_ms,
             cost_usd=card.cost_usd(completion.tokens_in,
                                    completion.tokens_out,
-                                   language=language),
+                                   language=language if completion.tokens_estimated else "en"),
         )
         self.calls.append(record)
         return record

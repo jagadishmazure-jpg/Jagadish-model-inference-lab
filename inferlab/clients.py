@@ -28,6 +28,9 @@ class Completion:
     tokens_out: int
     ttft_ms: float   # time to first token
     tpot_ms: float   # time per output token
+    # True when token counts come from the chars/4 heuristic, False when the
+    # provider reported them. Only estimated counts get a language multiplier.
+    tokens_estimated: bool = True
 
 
 class Backend:
@@ -91,6 +94,7 @@ class OpenAIBackend(Backend):
             tokens_out=usage.get("completion_tokens",
                                  _estimate_tokens(choice)),
             ttft_ms=0.0, tpot_ms=0.0,
+            tokens_estimated=not ("prompt_tokens" in usage and "completion_tokens" in usage),
         )
 
 
@@ -126,6 +130,7 @@ class OllamaBackend(Backend):
                                   _estimate_tokens(prompt)),
             tokens_out=payload.get("eval_count", _estimate_tokens(text)),
             ttft_ms=0.0, tpot_ms=0.0,
+            tokens_estimated=not ("prompt_eval_count" in payload and "eval_count" in payload),
         )
 
 

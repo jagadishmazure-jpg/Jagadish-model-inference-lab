@@ -7,6 +7,7 @@ use an amortised GPU cost from stated assumptions.
 from inferlab.clients import FakeBackend, RateLimited, ScriptedBackend, TransientBackendError
 from inferlab.evals import GoldenSet, scores_table
 from inferlab.fallback import FallbackChain
+from inferlab.generation import BALANCED, GREEDY, best_of_n, generate, self_consistency
 from inferlab.models import PRICES_AS_OF, LocalInfra, ModelRegistry, shipped_cards
 from inferlab.resilience import CircuitBreaker, RetryPolicy
 from inferlab.router import EvalInformedRouter, PolicyRouter
@@ -55,3 +56,15 @@ rec = chain.last_record
 t.log(model=rec.served_by_model, backend=rec.served_by_backend, card=reg.get(rec.served_by_model),
       completion=completion)
 print("\n" + t.summary())
+
+# Generation controls: greedy is repeatable, sampling is seeded; best-of-N and self-consistency spend N calls.
+gen_backend = ScriptedBackend("vote", ["Paris", "paris ", "Lyon", "Paris", "Marseille"])
+answer, votes = self_consistency(gen_backend, "capital of France?", "gpt-4o-mini", n=5, config=BALANCED)
+print(f"Self-consistency over 5 samples: {answer!r}, votes {votes}")
+fake = FakeBackend()
+same = generate(fake, "summarise the incident", "gpt-4o-mini", GREEDY).text == generate(
+    fake, "summarise the incident", "gpt-4o-mini", GREEDY).text
+winner, samples = best_of_n(fake, "summarise the incident", "gpt-4o-mini", n=4, config=BALANCED,
+                            score_fn=lambda c: -c.tokens_out)
+print(f"Greedy repeatable: {same}; best-of-4 picked the shortest of {[c.tokens_out for c in samples]} output tokens "
+      f"({winner.tokens_out}), paying for {sum(c.tokens_in + c.tokens_out for c in samples)} tokens in total")

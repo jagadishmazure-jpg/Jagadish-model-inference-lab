@@ -66,6 +66,14 @@ errors are not retried.
 per-call cost and latency with a session budget, and model cards that
 `validate()` checks for required fields. See [docs/model-cards.md](docs/model-cards.md).
 
+**Generation** (`inferlab/generation.py`): `SamplingConfig` profiles (greedy,
+balanced, creative) with seeded, repeatable samples. `best_of_n` keeps the
+top-scoring of N samples, and `self_consistency` takes a majority vote over
+normalised answers. Both pay for all N calls, and the demo prints that total.
+Cards carry per-language token multipliers. These apply only to heuristic token
+estimates (`Completion.tokens_estimated`), never to counts the provider
+reported, so real usage is not double-counted.
+
 ## Real code and output
 
 ```python
@@ -78,6 +86,7 @@ use an amortised GPU cost from stated assumptions.
 from inferlab.clients import FakeBackend, RateLimited, ScriptedBackend, TransientBackendError
 from inferlab.evals import GoldenSet, scores_table
 from inferlab.fallback import FallbackChain
+from inferlab.generation import BALANCED, GREEDY, best_of_n, generate, self_consistency
 from inferlab.models import PRICES_AS_OF, LocalInfra, ModelRegistry, shipped_cards
 from inferlab.resilience import CircuitBreaker, RetryPolicy
 from inferlab.router import EvalInformedRouter, PolicyRouter
@@ -126,6 +135,18 @@ rec = chain.last_record
 t.log(model=rec.served_by_model, backend=rec.served_by_backend, card=reg.get(rec.served_by_model),
       completion=completion)
 print("\n" + t.summary())
+
+# Generation controls: greedy is repeatable, sampling is seeded; best-of-N and self-consistency spend N calls.
+gen_backend = ScriptedBackend("vote", ["Paris", "paris ", "Lyon", "Paris", "Marseille"])
+answer, votes = self_consistency(gen_backend, "capital of France?", "gpt-4o-mini", n=5, config=BALANCED)
+print(f"Self-consistency over 5 samples: {answer!r}, votes {votes}")
+fake = FakeBackend()
+same = generate(fake, "summarise the incident", "gpt-4o-mini", GREEDY).text == generate(
+    fake, "summarise the incident", "gpt-4o-mini", GREEDY).text
+winner, samples = best_of_n(fake, "summarise the incident", "gpt-4o-mini", n=4, config=BALANCED,
+                            score_fn=lambda c: -c.tokens_out)
+print(f"Greedy repeatable: {same}; best-of-4 picked the shortest of {[c.tokens_out for c in samples]} output tokens "
+      f"({winner.tokens_out}), paying for {sum(c.tokens_in + c.tokens_out for c in samples)} tokens in total")
 ```
 
 Output of `python examples/demo.py` (real run, re-checked in CI):
@@ -168,6 +189,8 @@ Resilience: hop 1 rate-limited then 503s, hop 2 serves
 model | backend | in | out | ttft_ms | tpot_ms | cost_usd
 gpt-4o-mini | fake | 3 | 15 | 120.0 | 18.0 | $0.000009
 TOTAL | | | | | | $0.000009
+Self-consistency over 5 samples: 'paris', votes {'paris': 3, 'lyon': 1, 'marseille': 1}
+Greedy repeatable: True; best-of-4 picked the shortest of [15, 25, 11, 11] output tokens (11), paying for 82 tokens in total
 ```
 <!-- /run -->
 
@@ -186,7 +209,7 @@ Test suite size (real collection, re-checked in CI):
 
 <!-- run: python scripts/count_tests.py -->
 ```text
-54 tests collected
+79 tests collected
 ```
 <!-- /run -->
 
@@ -206,6 +229,9 @@ Test suite size (real collection, re-checked in CI):
 - Complexity estimation is a word and keyword heuristic.
 - Local cost depends on `LocalInfra` assumptions; at low utilisation self-hosting is the expensive option.
 - Hosted prices change; they are correct only as of the date in the cards.
+- The Hindi multiplier (2.0) is an illustrative default, not a measurement; measure per tokenizer.
+- Sampling is simulated by salting the prompt for the fake backend; the live clients do not pass sampling parameters yet.
+- Stop sequences are applied after generation, so with a live backend the cut-off text is still billed.
 
 ## Built vs planned
 
@@ -216,6 +242,8 @@ Test suite size (real collection, re-checked in CI):
 | Retries, rate limits, circuit breakers, validation | Built | `inferlab/resilience.py`, `inferlab/fallback.py` |
 | Cost and latency tracking with a budget | Built | `inferlab/tracker.py` |
 | Model cards with NIST AI RMF and EU AI Act notes | Built | `inferlab/model_cards.py` |
+| Sampling profiles, best-of-N, self-consistency | Built | `inferlab/generation.py` |
+| Per-language token multipliers for estimates | Built | `inferlab/models.py`, `inferlab/tracker.py` |
 | OpenAI and Ollama clients | Built | `inferlab/clients.py` (live, not run in CI) |
 | Real golden-set scores from live models | Planned | docs/implementation-guide.md |
 
@@ -272,6 +300,7 @@ inferlab/
   fallback.py     FallbackChain
   clients.py      OpenAI, Ollama, Fake, Scripted backends
   tracker.py      cost/latency ledger, budget
+  generation.py   sampling profiles, best-of-N, self-consistency
   model_cards.py  model cards, validate, render
   live_demo.py    CLI against real backends
 examples/demo.py  the run shown above

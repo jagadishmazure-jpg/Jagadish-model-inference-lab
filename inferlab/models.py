@@ -79,6 +79,8 @@ class RoutingCard:
 
     def cost_usd(self, tokens_in: int, tokens_out: int,
                  language: str = "en") -> float:
+        """Price a call. Pass ``language`` only for English-equivalent token
+        estimates; real tokenizer counts must use the default "en"."""
         m = self.multiplier_for(language)
         return (tokens_in * m / 1000.0) * self.price_in_per_1k + (
             tokens_out * m / 1000.0) * self.price_out_per_1k
