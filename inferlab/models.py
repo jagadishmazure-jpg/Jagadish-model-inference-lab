@@ -18,7 +18,7 @@ Prices
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 PRICES_AS_OF = "2026-10-17"
 PRICE_SOURCE = "https://developers.openai.com/api/docs/pricing (standard tier, short context)"
@@ -65,14 +65,27 @@ class RoutingCard:
     latency_tier: int        # 1..3 (1 = fastest)
     price_basis: str = "list"  # "list" (vendor price) | "amortised" (local infra)
     notes: str = ""
+    token_multipliers: dict[str, float] = field(default_factory=dict)
+    # Per-language token multipliers vs English (1.0): some languages need
+    # more tokens for the same content (tokenizer fertility). Defaults are
+    # illustrative, not measurements -- measure per tokenizer. Documented
+    # example: Hindi needs roughly 2x the tokens of English ("hi": 2.0).
 
-    def cost_usd(self, tokens_in: int, tokens_out: int) -> float:
-        return (tokens_in / 1000.0) * self.price_in_per_1k + (
-            tokens_out / 1000.0) * self.price_out_per_1k
+    def multiplier_for(self, language: str) -> float:
+        """Token multiplier for a language code; English and unknown -> 1.0."""
+        if language == "en":
+            return 1.0
+        return self.token_multipliers.get(language, 1.0)
 
-    def blended_ref_cost(self) -> float:
+    def cost_usd(self, tokens_in: int, tokens_out: int,
+                 language: str = "en") -> float:
+        m = self.multiplier_for(language)
+        return (tokens_in * m / 1000.0) * self.price_in_per_1k + (
+            tokens_out * m / 1000.0) * self.price_out_per_1k
+
+    def blended_ref_cost(self, language: str = "en") -> float:
         """Cost of a reference call (100 input, 50 output tokens)."""
-        return self.cost_usd(100, 50)
+        return self.cost_usd(100, 50, language=language)
 
 
 def _local(name: str, license_name: str, context: int, quality: int,
@@ -82,7 +95,8 @@ def _local(name: str, license_name: str, context: int, quality: int,
                        license_name=license_name, context_window=context,
                        price_in_per_1k=p_in, price_out_per_1k=p_out,
                        quality_tier=quality, latency_tier=2,
-                       price_basis="amortised", notes=notes)
+                       price_basis="amortised", notes=notes,
+                       token_multipliers={"hi": 2.0})
 
 
 def shipped_cards(infra: LocalInfra = DEFAULT_LOCAL_INFRA) -> list[RoutingCard]:
@@ -91,12 +105,14 @@ def shipped_cards(infra: LocalInfra = DEFAULT_LOCAL_INFRA) -> list[RoutingCard]:
                     license_name="proprietary (API terms)", context_window=128_000,
                     price_in_per_1k=0.00015, price_out_per_1k=0.0006,
                     quality_tier=1, latency_tier=1,
-                    notes="Small hosted model; default for simple tasks."),
+                    notes="Small hosted model; default for simple tasks.",
+                    token_multipliers={"hi": 2.0}),
         RoutingCard(name="gpt-4o", provider="openai", weights="closed",
                     license_name="proprietary (API terms)", context_window=128_000,
                     price_in_per_1k=0.0025, price_out_per_1k=0.010,
                     quality_tier=3, latency_tier=2,
-                    notes="Larger hosted model; complex reasoning."),
+                    notes="Larger hosted model; complex reasoning.",
+                    token_multipliers={"hi": 2.0}),
         _local("llama-3.1-8b", "Llama 3.1 Community License", 128_000, 1, infra,
                "Open weights served locally by Ollama."),
         _local("mistral-7b-instruct", "Apache-2.0", 32_768, 1, infra,

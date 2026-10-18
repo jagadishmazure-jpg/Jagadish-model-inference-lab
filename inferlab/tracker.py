@@ -34,7 +34,9 @@ class CallTracker:
         self.calls: list[CallRecord] = []
 
     def log(self, *, model: str, backend: str, card: RoutingCard,
-            completion: Completion) -> CallRecord:
+            completion: Completion, language: str = "en") -> CallRecord:
+        """Log one call. ``language`` selects the card's token multiplier
+        (e.g. "hi" roughly doubles token counts vs English)."""
         record = CallRecord(
             timestamp=time.time(),
             model=model,
@@ -44,7 +46,8 @@ class CallTracker:
             ttft_ms=completion.ttft_ms,
             tpot_ms=completion.tpot_ms,
             cost_usd=card.cost_usd(completion.tokens_in,
-                                   completion.tokens_out),
+                                   completion.tokens_out,
+                                   language=language),
         )
         self.calls.append(record)
         return record
