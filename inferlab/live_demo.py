@@ -17,13 +17,13 @@ from .clients import BackendUnavailable, FakeBackend, OllamaBackend, OpenAIBacke
 from .fallback import FallbackChain
 from .models import ModelRegistry
 from .router import POLICIES, PolicyRouter
-from .tracker import BudgetExceeded, CallTracker
+from .tracker import CallTracker
 
 
 def main() -> None:
     args = parse_args()
     registry = ModelRegistry()
-    card = registry.get(args.model)
+    registry.get(args.model)  # fail fast on an unknown model name
     router = PolicyRouter(registry)
     decision = router.route(args.prompt, args.policy)
     print(f"route: {decision.model_name} via {decision.backend_name}")

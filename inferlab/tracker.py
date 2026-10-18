@@ -7,10 +7,10 @@ BudgetExceeded BEFORE the call when it would breach the limit.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .clients import Completion
-from .models import ModelCard
+from .models import RoutingCard
 
 
 class BudgetExceeded(RuntimeError):
@@ -33,7 +33,7 @@ class CallTracker:
     def __init__(self) -> None:
         self.calls: list[CallRecord] = []
 
-    def log(self, *, model: str, backend: str, card: ModelCard,
+    def log(self, *, model: str, backend: str, card: RoutingCard,
             completion: Completion) -> CallRecord:
         record = CallRecord(
             timestamp=time.time(),
